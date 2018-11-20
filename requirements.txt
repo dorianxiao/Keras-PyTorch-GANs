@@ -1,0 +1,16 @@
+# PyTorch requirements
+torch>=0.4.0
+torchvision
+# Keras requirements
+keras
+git+https://www.github.com/keras-team/keras-contrib.git
+tensorflow-gpu
+
+# Common
+matplotlib
+numpy
+scipy
+pillow
+urllib3
+scikit-image
+

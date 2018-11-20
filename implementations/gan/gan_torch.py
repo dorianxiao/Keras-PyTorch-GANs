@@ -55,7 +55,7 @@ parser.add_argument('--channels',
                     help='number of image channels')
 parser.add_argument('--sample_interval', 
                     type=int, 
-                    default=400, 
+                    default=40, 
                     help='interval betwen image samples')
 opt = parser.parse_args()
 print(opt)
@@ -87,6 +87,7 @@ class Generator(nn.Module):
     def forward(self, z):
         img = self.model(z)
         img = img.view(img.size(0), *img_shape)
+        return img
 
 class Discrimenator(nn.Module):
     def __init__(self):
@@ -102,7 +103,7 @@ class Discrimenator(nn.Module):
         )
 
     def forward(self, img):
-        img_flat = img.view(img_size(0), -1)
+        img_flat = img.view(img.size(0), -1)
         validity = self.model(img_flat)
 
         return validity
@@ -120,7 +121,7 @@ if cuda:
     adversarial_loss.cuda()
 
 # Configure data loader
-os.mkdirs('../../data/mnist', exist_ok=True)
+os.makedirs('../../data/mnist', exist_ok=True)
 dataloader = torch.utils.data.DataLoader(
     datasets.MNIST('../../data/mnist', train=True, download=True,
     transform=transforms.Compose([
@@ -173,7 +174,7 @@ for epoch in range(opt.n_epochs):
 
         # Measure discriminator's ablibity to classify real from generated samples
         real_loss = adversarial_loss(discriminator(real_imgs), valid)
-        fake_loss = adversarial_loss(discriminator(gen_imgs.detach()). fake)
+        fake_loss = adversarial_loss(discriminator(gen_imgs.detach()), fake)
         d_loss = (real_loss + fake_loss) / 2
 
         d_loss.backward()
@@ -184,4 +185,4 @@ for epoch in range(opt.n_epochs):
 
         batches_done = epoch * len(dataloader) + i
         if batches_done % opt.sample_interval == 0:
-            save_image(gen_imgs.data[:25], 'images/%d.png' % batches_done, nrow=5, normalize=True)
+            save_image(gen_imgs.data[:25], 'images/%08d.png' % batches_done, nrow=5, normalize=True)

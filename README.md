@@ -6,9 +6,9 @@ The implementation of variable GANs by Keras and PyTorch. Contributions and sugg
 <b> Merged from </b> [Keras-GAN](https://github.com/eriklindernoren/Keras-GAN) and [PyTorch-GAN](https://github.com/eriklindernoren/PyTorch-GAN)
 
 ## Table of Contents
-    * [Installation](#installation)
-    * [Implementations](#implementations)
-        + [GAN](#gan)
+  * [Installation](#installation)
+  * [Implementations](#implementations)
+    + [GAN](#gan)
 
 ## Installation
     $ git clone https://github.com/LittleLampChen/Keras-PyTorch-GANs.git

@@ -33,6 +33,9 @@ $ cd implementations/gan/
 $ python3 gan.py
 ```
 
-<p align="center">
-    <img src="assets/gan.gif" width="240"\>
+<p align="left">
+    <img src="assets/gan_torch.gif" width="240"\>
+</p>
+<p align="right">
+    <img src="assets/gan_keras.gif" width="240"\>
 </p>

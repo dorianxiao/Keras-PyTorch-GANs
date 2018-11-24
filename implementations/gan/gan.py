@@ -1,69 +1,164 @@
-import argparse
+from __future__ import print_function, division
+
+from keras.datasets import mnist
+from keras.layers import Input, Dense, Reshape, Flatten, Dropout
+from keras.layers import BatchNormalization, Activation, ZeroPadding2D
+from keras.layers.advanced_activations import LeakyReLU
+from keras.layers.convolutional import UpSampling2D, Conv2D
+from keras.models import Sequential, Model
+from keras.optimizers import Adam
+
+import matplotlib.pyplot as plt
+
 import os
+import sys
 import numpy as np
-import math
-
-import torchvision.transforms as transforms
-from torchvision.utils import save_image
-
-from torch.utils.data import DataLoader
-from torchvision import datasets
-from torch.autograd import Variable
-
-import torch.nn as nn
-import torch.nn.functional as F 
-import torch
+import argparse
 
 # ------
-# Create the Generator Network
+# Create GAN
 # ------
-class Generator(nn.Module):
+class GAN():
     def __init__(self, opt):
-        super(Generator, self).__init__()
+        self.opt = opt
 
-        def block(in_feat, out_feat, normalize=True):
-            layers = [nn.Linear(in_feat, out_feat)]
-            if normalize:
-                layers.append(nn.BatchNorm1d(out_feat, 0.8))
-            layers.append(nn.LeakyReLU(0.2, inplace=True))
-            return layers
+        # define a optimizer
+        optimizer = Adam(self.opt.lr, self.opt.b1, self.opt.b2)
 
-        self.img_shape = opt.img_shape
-        self.model = nn.Sequential(
-            *block(opt.latent_dim, 128, normalize=False),
-            *block(128, 256),
-            *block(256, 512),
-            *block(512, 1024),
-            nn.Linear(1024, int(np.prod(self.img_shape))),
-            nn.Tanh()
-        )
-    def forward(self, z):
-        img = self.model(z)
-        img = img.view(img.size(0), *self.img_shape)
-        return img
+        # Build and compile the discriminator
+        self.discriminator = self.build_discriminator()
+        self.discriminator.compile(loss='binary_crossentropy',
+                                   optimizer=optimizer,
+                                   metrics=['accuracy'])
+        
+        # Build the generator
+        self.generator = self.build_generator()
+
+        # The generator takes generated images as input and generates images
+        z = Input(shape=(self.opt.latent_dim,))
+        img = self.generator(z)
+
+        # For te combined model we will only train the generator
+        self.discriminator.trainable = False
+
+        # The discriminator takes generated images as input and determines validity
+        validity = self.discriminator(img)
+
+        # The conbined mode (stacked generator and discriminator)
+        # Trains the generator to fool the discriminator
+        self.combined = Model(z, validity)
+        self.combined.compile(loss='binary_crossentropy',
+                              optimizer=optimizer)
+
+    def build_generator(self):
+        # ------
+        # Build Generator Network
+        # ------
+        model = Sequential()
+
+        model.add(Dense(256, input_dim=self.opt.latent_dim))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(512))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(1024))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(np.prod(self.opt.image_shape), activation='tanh'))
+        model.add(Reshape(self.opt.image_shape))
+
+        # print the network
+        model.summary()
+
+        noise = Input(shape=(self.opt.latent_dim,))
+        img = model(noise)
+
+        return Model(noise, img)
+
+    def build_discriminator(self):
+        model = Sequential()
+
+        model.add(Flatten(input_shape=self.opt.image_shape))
+        model.add(Dense(512))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(Dense(256))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(Dense(1, activation='sigmoid'))
+        
+        # print the network
+        model.summary()
+
+        img = Input(shape=self.opt.image_shape)
+        validity = model(img)
+
+        return Model(img, validity)
+
+    def train(self):
+        # Load the dataset
+        (X_train, _), (_, _) = mnist.load_data()
+
+        # Reshape -1 to 1
+        X_train = X_train / 127.5 - 1
+        X_train = np.expand_dims(X_train, axis=3)
+
+        # Adversarial ground truths
+        valid = np.ones((self.opt.batch_size, 1))
+        fake = np.zeros_like(valid)
+
+        for epoch in range(self.opt.n_epochs):
+            # -----
+            # Train Discriminator
+            # -----
+
+            # Select a random batch of images
+            idx = np.random.randint(0, X_train.shape[0], self.opt.batch_size)
+            imgs = X_train[idx]
+
+            noise = np.random.normal(0, 1, (self.opt.batch_size, self.opt.latent_dim))
+
+            # Generate a batch of new images
+            gen_imgs = self.generator.predict(noise)
+
+            # Train the discriminator
+            d_loss_real = self.discriminator.train_on_batch(imgs, valid)
+            d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
+            d_loss = 0.5 * np.add(d_loss_fake, d_loss_real)
+
+            # -----
+            # Train Generator
+            # -----
+            noise = np.random.normal(0, 1, (self.opt.batch_size, self.opt.latent_dim))
+
+            # Train the generator (to have the discriminator label samples as valid)
+            g_loss = self.combined.train_on_batch(noise, valid)
+
+            # Plot the process
+            print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
+
+            # If at save interval => save generated image samples
+            if epoch % self.opt.sample_interval == 0:
+                self.sample_images(epoch)
+
+    def sample_images(self, epoch):
+        r, c = 5, 5
+        noise = np.random.normal(0, 1, (r * c, self.opt.latent_dim))
+        gen_imgs = self.generator.predict(noise)
+
+        # Rescale images 0 - 1
+        gen_imgs = 0.5 * gen_imgs + 0.5
+
+        fig, axs = plt.subplots(r, c)
+        cnt = 0
+        for i in range(r):
+            for j in range(c):
+                axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
+                axs[i,j].axis('off')
+                cnt += 1
+        fig.savefig("images/%08d.png" % epoch)
+        plt.close()
 
 
-# -----
-# Create the Discriminator network
-# -----
-class Discriminator(nn.Module):
-    def __init__(self, opt):
-        super(Discriminator, self).__init__()
-
-        self.model = nn.Sequential(
-            nn.Linear(int(np.prod(opt.img_shape)), 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, 1),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, img):
-        img_flat = img.view(img.size(0), -1)
-        validity = self.model(img_flat)
-
-        return validity
 
 def main():
     os.makedirs('images', exist_ok=True)
@@ -71,7 +166,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_epochs',
                         type=int,
-                        default=200,
+                        default=20000,
                         help='number of epoches of training')
     parser.add_argument('--batch_size',
                         type=int,
@@ -110,97 +205,14 @@ def main():
                         default=40, 
                         help='interval betwen image samples')
     opt = parser.parse_args()
-    opt.cuda = True if torch.cuda.is_available() else False
-    opt.img_shape = (opt.channels, opt.img_size, opt.img_size)
+
+    # channel last
+    opt.image_shape = (opt.img_size, opt.img_size, opt.channels)
     print(opt)
 
-    # -----
-    # Define Loss Function
-    # -----
-    adversarial_loss = torch.nn.BCELoss()
+    gan = GAN(opt)
+    gan.train()
 
-    # Initialize generator and discriminater
-    generator = Generator(opt)
-    discriminator = Discriminator(opt)
-
-    if opt.cuda:
-        generator.cuda()
-        discriminator.cuda()
-        adversarial_loss.cuda()
-    
-    # -----
-    # Configure data loader
-    # -----
-    os.makedirs('../../data/mnist', exist_ok=True)
-    dataloader = torch.utils.data.DataLoader(
-    datasets.MNIST('../../data/mnist', train=True, download=True,
-    transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])),
-        batch_size=opt.batch_size, shuffle=True)
-    
-    # -----
-    # Define the optimizer
-    # -----
-    optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-
-    Tensor = torch.cuda.FloatTensor if opt.cuda else torch.FloatTensor
-
-    # -----
-    # Training
-    # -----
-    for epoch in range(opt.n_epochs):
-        for i, (imgs, _) in enumerate(dataloader):
-            # Adversarial groud truths
-            valid = Variable(Tensor(imgs.size(0), 1).fill_(1.0), requires_grad=False)
-            fake = Variable(Tensor(imgs.size(0), 1).fill_(0.0), requires_grad=False)
-
-            # Configure input
-            real_imgs = Variable(imgs.type(Tensor))
-
-            # ------
-            # Trian Generator
-            # ------
-
-            # clear the grad which is computed last time
-            optimizer_G.zero_grad()
-
-            # Sample noise as generator input
-            z = Variable(Tensor(np.random.normal(0, 1, (imgs.shape[0], opt.latent_dim))))
-
-            # Generate a batch of images
-            gen_imgs = generator(z)
-
-            # Loss measures generator's ability to fool the discriminator
-            g_loss = adversarial_loss(discriminator(gen_imgs), valid)
-            
-            # calculate the grad
-            g_loss.backward()
-
-            # apply grad descent
-            optimizer_G.step()
-
-            # -----
-            # Train Discriminator
-            # -----
-            optimizer_D.zero_grad()
-
-            # Measure discriminator's ability to classify real from generated samples
-            real_loss = adversarial_loss(discriminator(real_imgs), valid)
-            fake_loss = adversarial_loss(discriminator(gen_imgs.detach()), fake)
-            d_loss = (real_loss + fake_loss) / 2
-
-            d_loss.backward()
-            optimizer_D.step()
-
-            print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]" % (epoch, opt.n_epochs, i, len(dataloader),
-                                                            d_loss.item(), g_loss.item()))
-
-            batches_done = epoch * len(dataloader) + i
-            if batches_done % opt.sample_interval == 0:
-                save_image(gen_imgs.data[:25], 'images/%08d.png' % batches_done, nrow=5, normalize=True)
 
 if __name__ == '__main__':
     main()

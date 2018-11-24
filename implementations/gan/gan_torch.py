@@ -111,6 +111,8 @@ def main():
                         help='interval betwen image samples')
     opt = parser.parse_args()
     opt.cuda = True if torch.cuda.is_available() else False
+    
+    # channel first
     opt.img_shape = (opt.channels, opt.img_size, opt.img_size)
     print(opt)
 

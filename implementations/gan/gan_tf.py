@@ -33,6 +33,14 @@ def main():
                         type=float,
                         default=0.0002,
                         help='adam: learning rate')
+    parser.add_argument('--b1', 
+                        type=float, 
+                        default=0.5, 
+                        help='adam: decay of first order momentum of gradient')
+    parser.add_argument('--b2', 
+                        type=float, 
+                        default=0.999, 
+                        help='adam: decay of second order momentum of gradient')
     parser.add_argument('--latent_dim',
                         type=int, 
                         default=100,
@@ -48,6 +56,7 @@ def main():
     opt = parser.parse_args()
     print(opt)
 
+    # Channel last
     image_shape = (opt.img_size, opt.img_size, 1) # (width, height, channels)
 
     # ------
@@ -92,10 +101,10 @@ def main():
     tf.summary.histogram('generator loss', generator_loss)
 
     # Define Optimizer
-    train_discrimminator = tf.train.AdamOptimizer(opt.lr).minimize(discriminator_loss, 
+    train_discriminator = tf.train.AdamOptimizer(opt.lr, opt.b1, opt.b2, name="discriminator_opti").minimize(discriminator_loss, 
         var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Discriminator'))
 
-    train_generator = tf.train.AdamOptimizer(opt.lr).minimize(generator_loss,
+    train_generator = tf.train.AdamOptimizer(opt.lr, opt.b1, opt.b2, name="generator_opti").minimize(generator_loss,
         var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Generator'))
     
     # Load data
@@ -119,6 +128,8 @@ def main():
                 # prepare data
                 noise_image = np.random.normal(0, 1, (opt.batch_size, opt.latent_dim))
                 real_image, _ = mnist.train.next_batch(batch_size=opt.batch_size)
+                # resacale to -1, 1
+                real_image = real_image / 127.5 - 1
 
                 # ------
                 # Train
@@ -128,7 +139,7 @@ def main():
                 # and Generator Network once.
                 # ------
                 discriminator_loss_value, generator_loss_value, prob_fake_value, prob_real_value, results, _, _ = \
-                    sess.run([discriminator_loss, generator_loss, prob_fake, prob_real, merged, train_discrimminator, train_generator],
+                    sess.run([discriminator_loss, generator_loss, prob_fake, prob_real, merged, train_discriminator, train_generator],
                         {noise_in:noise_image, real_in:real_image})
 
                 if batch % opt.sample_interval == 0:
@@ -139,13 +150,16 @@ def main():
 
                     noise = np.random.normal(0, 1, (r * c, opt.latent_dim))
                     gen_imgs = sess.run([fake_image], {noise_in:noise})
-                    # gen_imgs = np.add(0.5,  np.multiply(0.5, gen_imgs))
+                    
+                    # scale to 0, 1
+                    gen_imgs = np.add(0.5,  np.multiply(0.5, gen_imgs))
+
                     gen_imgs = np.reshape(gen_imgs, [r*c, *image_shape])
                     
                     cnt = 0
                     for i in range(r):
                         for j in range(c):
-                            axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
+                            axs[i,j].imshow(gen_imgs[cnt, :, :, 0], cmap='gray')
                             axs[i,j].axis('off')
                             cnt += 1
                     fig.savefig("../../images/%08d.png" % (epoch * total_batch + batch) )

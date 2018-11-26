@@ -18,7 +18,7 @@ def block(inputs, out_shape, name=None, normalize=True, reuse=False):
 
 def main():
 
-    os.makedirs('../../images', exist_ok=True)
+    os.makedirs('images', exist_ok=True)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_epochs',  
@@ -129,8 +129,9 @@ def main():
                 noise_image = np.random.normal(0, 1, (opt.batch_size, opt.latent_dim))
                 real_image, _ = mnist.train.next_batch(batch_size=opt.batch_size)
                 # resacale to -1, 1
-                real_image = real_image / 127.5 - 1
+                real_image = real_image * 2 - 1
 
+                # print("max: %f\t min: %f" % (np.max(real_image), np.min(real_image)))
                 # ------
                 # Train
                 # According to the paper, it's better for us to train 
@@ -155,14 +156,14 @@ def main():
                     gen_imgs = np.add(0.5,  np.multiply(0.5, gen_imgs))
 
                     gen_imgs = np.reshape(gen_imgs, [r*c, *image_shape])
-                    
+                    # print("max: %f\t min: %f" % (np.max(gen_imgs), np.min(gen_imgs)))
                     cnt = 0
                     for i in range(r):
                         for j in range(c):
                             axs[i,j].imshow(gen_imgs[cnt, :, :, 0], cmap='gray')
                             axs[i,j].axis('off')
                             cnt += 1
-                    fig.savefig("../../images/%08d.png" % (epoch * total_batch + batch) )
+                    fig.savefig("images/%08d.png" % (epoch * total_batch + batch) )
     plt.close()
 if __name__ == '__main__':
     main()

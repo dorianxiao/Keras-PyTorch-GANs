@@ -9,6 +9,7 @@ The implementation of variable GANs by Keras and PyTorch. Contributions and sugg
   * [Installation](#installation)
   * [Implementations](#implementations)
     + [GAN](#gan)
+    + [Adversarial Autoencoder](#adversarial-autoencoder)
 
 ## Installation
     $ git clone https://github.com/LittleLampChen/Keras-PyTorch-GANs.git
@@ -33,6 +34,23 @@ $ cd implementations/gan/
 $ python3 gan.py
 ```
 
-<p align="left">
-    <img src="assets/gan_torch.gif" width="240"\>
+<p align="center">
+    <img src="assets/gan_torch.gif" width="640"\>
+</p>
+
+### Adversarial Autoencoder
+Implementation of _Adversarial Autoencoder_.
+
+[Code](aae/aae.py)
+
+Paper: https://arxiv.org/abs/1511.05644
+
+#### Example
+```
+$ cd aae/
+$ python3 aae.py
+```
+
+<p align="center">
+    <img src="assets/aae.gif" width="640"\>
 </p>
